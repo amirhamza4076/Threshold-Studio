@@ -1,0 +1,1186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Photoshop Threshold Studio</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #1e1e1e;
+      color: #e0e0e0;
+      user-select: none;
+      overflow: hidden;
+    }
+
+    html { min-height: 100%; }
+    body { min-width: 320px; }
+    button, label, select, input { -webkit-tap-highlight-color: transparent; }
+    input[type="range"] { width: 100%; min-height: 24px; touch-action: pan-y; }
+
+    /* Slider focus mode: chrome fades so the image stays visible */
+    body.slider-focus header,
+    body.slider-focus #zoomBar,
+    body.slider-focus aside .panel-chrome,
+    body.slider-focus aside .panel-footer,
+    body.slider-focus aside .control-block:not(.slider-active) {
+      opacity: 0.12;
+      pointer-events: none;
+      transition: opacity 0.18s ease;
+    }
+    body.slider-focus aside {
+      background-color: rgba(37, 37, 38, 0.35);
+      border-color: transparent;
+      transition: background-color 0.18s ease, border-color 0.18s ease;
+    }
+    body.slider-focus aside .control-block.slider-active {
+      opacity: 1;
+      pointer-events: auto;
+      position: relative;
+      z-index: 5;
+      background: rgba(37, 37, 38, 0.92);
+      border-radius: 8px;
+      padding: 10px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+      transition: opacity 0.18s ease, background-color 0.18s ease;
+    }
+    header, #zoomBar, aside .panel-chrome, aside .panel-footer, aside .control-block {
+      transition: opacity 0.22s ease;
+    }
+
+    @media (max-width: 760px) {
+      body { overflow-x: hidden; overflow-y: auto; min-height: 100vh; min-height: 100svh; height: auto; width: 100%; }
+      body > header { min-height: 3.5rem; height: auto; flex-wrap: wrap; gap: .6rem; padding: .65rem .75rem; align-items: center; }
+      body > header > div:first-child { min-width: 0; flex: 1 1 auto; }
+      body > header h1 { font-size: .78rem; white-space: normal; line-height: 1.35; }
+      body > header > div:nth-of-type(2) { width: auto; display: flex; flex-wrap: wrap; gap: .5rem; margin-left: auto; }
+      body > header > div:nth-of-type(2) > label,
+      body > header > div:nth-of-type(2) > button { flex: 1 1 auto; justify-content: center; min-height: 42px; padding: .65rem .55rem; }
+      body > .flex-1 { flex: none; min-height: 0; flex-direction: column; overflow: visible; }
+      #viewportContainer { width: 100%; height: clamp(320px, 54svh, 560px); min-height: 320px; flex: none; overflow: hidden; touch-action: none; }
+      #canvasTransformTarget { max-width: none; max-height: none; }
+      #zoomBar { left: 50%; bottom: .65rem; transform: translateX(-50%); width: max-content; max-width: calc(100% - 1rem); justify-content: center; gap: .85rem; padding: .65rem .8rem; }
+      #zoomBar button { min-width: 34px; min-height: 32px; }
+      #splitDivider { width: 3px; }
+      .split-handle { width: 42px; height: 42px; font-size: 12px; }
+      aside.w-80 { width: 100%; max-height: none; min-height: 0; border-left: 0; border-top: 1px solid #333; }
+      aside .flex-1.overflow-y-auto { overflow: visible; padding: 1rem; }
+      #presetMenu { position: fixed; right: .5rem; left: .5rem; top: auto; width: auto; max-height: 60svh; overflow-y: auto; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      #moreMenu { right: .5rem; left: auto; }
+      #histogramCanvas { width: 100%; height: 96px; }
+      .ps-input, select, input[type="number"] { min-height: 40px; }
+      input[type="checkbox"] { width: 20px; height: 20px; }
+    }
+
+    @media (max-width: 380px) {
+      body > header h1 { font-size: .72rem; }
+      body > header > div:nth-of-type(2) > label,
+      body > header > div:nth-of-type(2) > button { font-size: 11px; }
+      #viewportContainer { height: 48svh; min-height: 290px; }
+      #zoomBar { gap: .55rem; font-size: 11px; }
+    }
+
+    @media (orientation: landscape) and (max-height: 520px) and (max-width: 900px) {
+      #viewportContainer { height: 70svh; min-height: 250px; }
+      aside .flex-1.overflow-y-auto { max-height: none; }
+    }
+
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #252526; }
+    ::-webkit-scrollbar-thumb { background: #424242; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #4f4f4f; }
+
+    .transparency-grid {
+      background-color: #1a1a1a;
+      background-image:
+        linear-gradient(45deg, #262626 25%, transparent 25%),
+        linear-gradient(-45deg, #262626 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #262626 75%),
+        linear-gradient(-45deg, transparent 75%, #262626 75%);
+      background-size: 20px 20px;
+      background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+    }
+
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      background: #333333;
+      height: 4px;
+      border-radius: 2px;
+      outline: none;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #007acc;
+      cursor: pointer;
+      border: 2px solid #ffffff;
+      box-shadow: 0 0 4px rgba(0,0,0,0.5);
+      transition: transform 0.1s ease, background-color 0.1s;
+    }
+    input[type="range"]::-webkit-slider-thumb:hover {
+      transform: scale(1.15);
+      background: #1f97ee;
+    }
+
+    .split-divider {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background-color: #007acc;
+      box-shadow: 0 0 8px rgba(0, 122, 204, 0.8);
+      cursor: ew-resize;
+      z-index: 30;
+      touch-action: none;
+    }
+    .split-handle {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 28px;
+      height: 28px;
+      background: #007acc;
+      border: 2px solid #ffffff;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.6);
+      color: white;
+      font-size: 10px;
+    }
+
+    .ps-panel {
+      background-color: #252526;
+      border: 1px solid #333333;
+    }
+    .ps-header {
+      background-color: #2d2d2d;
+      border-bottom: 1px solid #3c3c3c;
+    }
+    .ps-input {
+      background-color: #1e1e1e;
+      border: 1px solid #3c3c3c;
+      color: #cccccc;
+    }
+    .ps-input:focus {
+      border-color: #007acc;
+      outline: none;
+    }
+
+    #histogramCanvas {
+      background: #1a1a1a;
+      border: 1px solid #3a3a3a;
+    }
+
+    #moreMenu {
+      min-width: 220px;
+    }
+    #moreMenu button {
+      width: 100%;
+      text-align: left;
+    }
+  </style>
+</head>
+<body class="h-screen w-screen flex flex-col justify-between select-none">
+
+  <!-- Header Bar -->
+  <header class="ps-header h-12 px-4 flex items-center justify-between z-20">
+    <div class="flex items-center space-x-3 min-w-0">
+      <div class="bg-blue-600 text-white font-black text-xs px-2 py-1 rounded tracking-wider shadow shrink-0">Ps</div>
+      <h1 class="font-semibold text-sm tracking-wide text-gray-200 truncate">Photoshop Threshold Studio <span class="text-xs text-blue-400 ml-1 font-mono">v2.1</span></h1>
+    </div>
+
+    <div class="flex items-center space-x-2 relative">
+      <label for="fileInput" class="px-3 py-1.5 text-xs font-medium bg-blue-600 hover:bg-blue-500 text-white rounded cursor-pointer transition flex items-center gap-1.5 shadow">
+        <i class="fa-solid fa-folder-open"></i>
+        <span class="hidden sm:inline">Open Image</span>
+      </label>
+      <input type="file" id="fileInput" accept="image/*" class="hidden">
+
+      <button id="exportBtn" class="px-3 py-1.5 text-xs font-medium bg-emerald-600 hover:bg-emerald-500 text-white rounded transition flex items-center gap-1.5 shadow">
+        <i class="fa-solid fa-download"></i>
+        <span class="hidden sm:inline">Export PNG</span>
+      </button>
+
+      <!-- 3-dot menu -->
+      <div class="relative">
+        <button id="moreMenuBtn" class="w-9 h-9 flex items-center justify-center text-gray-300 hover:text-white hover:bg-zinc-700 rounded transition" title="More options" aria-haspopup="true" aria-expanded="false">
+          <i class="fa-solid fa-ellipsis-vertical text-sm"></i>
+        </button>
+        <div id="moreMenu" class="hidden absolute right-0 top-11 bg-zinc-800 border border-zinc-700 rounded-md shadow-2xl z-50 py-1">
+          <button type="button" id="menuPresetsBtn" class="px-3 py-2 text-xs text-gray-200 hover:bg-zinc-700 flex items-center gap-2">
+            <i class="fa-regular fa-images w-4 text-center"></i> Sample Presets
+          </button>
+          <button type="button" id="menuFitBtn" class="px-3 py-2 text-xs text-gray-200 hover:bg-zinc-700 flex items-center gap-2">
+            <i class="fa-solid fa-expand w-4 text-center"></i> Fit to Screen
+          </button>
+          <button type="button" id="menuActualBtn" class="px-3 py-2 text-xs text-gray-200 hover:bg-zinc-700 flex items-center gap-2">
+            <i class="fa-solid fa-1 w-4 text-center"></i> Actual Size (100%)
+          </button>
+          <button type="button" id="menuResetViewBtn" class="px-3 py-2 text-xs text-gray-200 hover:bg-zinc-700 flex items-center gap-2">
+            <i class="fa-solid fa-arrows-to-circle w-4 text-center"></i> Reset View
+          </button>
+          <div class="my-1 border-t border-zinc-700"></div>
+          <button type="button" id="menuResetParamsBtn" class="px-3 py-2 text-xs text-gray-200 hover:bg-zinc-700 flex items-center gap-2">
+            <i class="fa-solid fa-rotate-left w-4 text-center"></i> Reset Adjustments
+          </button>
+          <div class="my-1 border-t border-zinc-700"></div>
+          <button type="button" id="menuAboutBtn" class="px-3 py-2 text-xs text-gray-200 hover:bg-zinc-700 flex items-center gap-2">
+            <i class="fa-solid fa-circle-info w-4 text-center"></i> About
+          </button>
+        </div>
+      </div>
+
+      <!-- Preset Modal Dropdown (opened from 3-dot menu) -->
+      <div id="presetMenu" class="hidden absolute top-12 right-0 bg-zinc-800 border border-zinc-700 rounded-md shadow-2xl z-50 p-2 w-64 grid grid-cols-2 gap-2">
+        <button class="preset-option text-left text-xs bg-zinc-900 hover:bg-zinc-700 p-1.5 rounded transition flex flex-col gap-1" data-type="portrait">
+          <div class="h-16 w-full bg-cover bg-center rounded" style="background-image: url('https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80')"></div>
+          <span class="text-gray-300 font-medium">Portrait</span>
+        </button>
+        <button class="preset-option text-left text-xs bg-zinc-900 hover:bg-zinc-700 p-1.5 rounded transition flex flex-col gap-1" data-type="architecture">
+          <div class="h-16 w-full bg-cover bg-center rounded" style="background-image: url('https://images.unsplash.com/photo-1513694203232-719a280e022f?auto=format&fit=crop&w=300&q=80')"></div>
+          <span class="text-gray-300 font-medium">Architecture</span>
+        </button>
+        <button class="preset-option text-left text-xs bg-zinc-900 hover:bg-zinc-700 p-1.5 rounded transition flex flex-col gap-1" data-type="text">
+          <div class="h-16 w-full bg-cover bg-center rounded" style="background-image: url('https://images.unsplash.com/photo-1516962215378-7fa2e137ae93?auto=format&fit=crop&w=300&q=80')"></div>
+          <span class="text-gray-300 font-medium">Document / Ink</span>
+        </button>
+        <button class="preset-option text-left text-xs bg-zinc-900 hover:bg-zinc-700 p-1.5 rounded transition flex flex-col gap-1" data-type="landscape">
+          <div class="h-16 w-full bg-cover bg-center rounded" style="background-image: url('https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=300&q=80')"></div>
+          <span class="text-gray-300 font-medium">Landscape</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Work Area -->
+  <div class="flex-1 flex overflow-hidden relative">
+
+    <main id="viewportContainer" class="flex-1 transparency-grid relative overflow-hidden flex items-center justify-center cursor-grab active:cursor-grabbing">
+
+      <div id="dropZone" class="hidden absolute inset-0 bg-blue-900/60 border-4 border-dashed border-blue-400 z-40 flex flex-col items-center justify-center pointer-events-none backdrop-blur-sm">
+        <i class="fa-solid fa-cloud-arrow-up text-5xl text-blue-200 mb-3 animate-bounce"></i>
+        <p class="text-lg font-medium text-white">Drop image file anywhere to open</p>
+      </div>
+
+      <div id="canvasTransformTarget" class="relative transition-transform duration-75 origin-center shadow-2xl">
+        <canvas id="originalCanvas" class="block absolute top-0 left-0"></canvas>
+        <canvas id="thresholdCanvas" class="block relative"></canvas>
+        <div id="splitDivider" class="split-divider hidden" style="left: 50%;">
+          <div class="split-handle"><i class="fa-solid fa-arrows-left-right"></i></div>
+        </div>
+      </div>
+
+      <div id="zoomBar" class="absolute bottom-4 left-4 bg-zinc-900/90 backdrop-blur border border-zinc-700/80 rounded-lg px-3 py-1.5 flex items-center gap-3 text-xs z-20 shadow-lg text-gray-300">
+        <button id="zoomOutBtn" class="hover:text-white transition" title="Zoom Out"><i class="fa-solid fa-magnifying-glass-minus"></i></button>
+        <span id="zoomPercent" class="font-mono min-w-[45px] text-center">100%</span>
+        <button id="zoomInBtn" class="hover:text-white transition" title="Zoom In"><i class="fa-solid fa-magnifying-glass-plus"></i></button>
+        <div class="h-3 w-[1px] bg-zinc-700"></div>
+        <button id="fitScreenBtn" class="hover:text-white transition" title="Fit to Screen"><i class="fa-solid fa-expand"></i> Fit</button>
+        <button id="resetZoomBtn" class="hover:text-white transition" title="100% Zoom">1:1</button>
+      </div>
+
+      <div id="loader" class="hidden absolute inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center z-30">
+        <div class="bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-3 flex items-center gap-3 shadow-xl">
+          <i class="fa-solid fa-circle-notch fa-spin text-blue-500 text-lg"></i>
+          <span class="text-xs text-gray-200 font-medium">Processing pixels...</span>
+        </div>
+      </div>
+    </main>
+
+    <aside class="w-80 ps-panel flex flex-col z-10 border-l border-zinc-800">
+
+      <div class="panel-chrome flex items-center justify-between border-b border-zinc-800 px-3 py-2 bg-zinc-800/50">
+        <span class="text-xs font-semibold uppercase tracking-wider text-gray-400 flex items-center gap-2">
+          <i class="fa-solid fa-sliders text-blue-400"></i> Adjustment Controls
+        </span>
+        <button id="resetParamsBtn" class="text-[11px] text-zinc-400 hover:text-white transition" title="Reset to Defaults">
+          <i class="fa-solid fa-rotate-left"></i> Reset
+        </button>
+      </div>
+
+      <div class="flex-1 overflow-y-auto p-4 space-y-5">
+
+        <div class="control-block space-y-2">
+          <div class="flex items-center justify-between text-xs text-gray-300">
+            <span class="font-medium">Luminance Histogram</span>
+            <span id="histogramStats" class="text-[10px] font-mono text-zinc-400">0 - 255</span>
+          </div>
+          <div class="relative group">
+            <canvas id="histogramCanvas" width="256" height="100" class="w-full h-24 rounded cursor-crosshair"></canvas>
+            <div id="histogramMarker" class="absolute top-0 bottom-0 w-[2px] bg-red-500 pointer-events-none transition-all duration-75 shadow-[0_0_4px_rgba(239,68,68,0.8)]" style="left: 50%;"></div>
+            <div id="histTooltip" class="hidden absolute bottom-1 right-1 bg-black/80 px-1.5 py-0.5 rounded text-[10px] font-mono text-gray-200">
+              L: <span id="histHoverL">0</span> | Pixels: <span id="histHoverC">0</span>
+            </div>
+          </div>
+          <p class="text-[10px] text-zinc-400 italic">Click histogram or drag the threshold slider to set the cut point.</p>
+        </div>
+
+        <hr class="border-zinc-800 control-block">
+
+        <div class="control-block space-y-2" data-slider-group="threshold">
+          <div class="flex items-center justify-between">
+            <label for="thresholdRange" class="text-xs font-semibold text-gray-200">Threshold Level</label>
+            <input type="number" id="thresholdNumber" min="0" max="255" value="128" class="ps-input w-16 text-center text-xs py-0.5 rounded font-mono font-bold text-blue-400">
+          </div>
+          <input type="range" id="thresholdRange" min="0" max="255" value="128" class="w-full">
+          <div class="flex justify-between text-[10px] font-mono text-zinc-500">
+            <span>0 (Black)</span>
+            <span>128</span>
+            <span>255 (White)</span>
+          </div>
+        </div>
+
+        <hr class="border-zinc-800 control-block">
+
+        <div class="control-block space-y-2">
+          <label class="text-xs font-semibold text-gray-200 block">Luminance Algorithm</label>
+          <select id="algoSelect" class="ps-input w-full text-xs py-1.5 px-2 rounded cursor-pointer">
+            <option value="rec601" selected>Rec. 601 (SDTV — 29.9% R, 58.7% G, 11.4% B)</option>
+            <option value="rec709">Rec. 709 (HDTV / sRGB — 21.26% R, 71.52% G, 7.22% B)</option>
+            <option value="average">Average / Simple Grayscale (R + G + B / 3)</option>
+            <option value="redChannel">Red Channel Only</option>
+            <option value="greenChannel">Green Channel Only</option>
+            <option value="blueChannel">Blue Channel Only</option>
+          </select>
+        </div>
+
+        <div class="control-block space-y-2" data-slider-group="blur">
+          <div class="flex items-center justify-between">
+            <label for="blurRange" class="text-xs font-semibold text-gray-200">Pre-Blur (Noise Reduction)</label>
+            <span id="blurVal" class="text-xs font-mono text-zinc-400">0 px</span>
+          </div>
+          <input type="range" id="blurRange" min="0" max="10" step="0.5" value="0" class="w-full">
+          <p class="text-[10px] text-zinc-400">Smoothes fine grain before thresholding for cleaner edges.</p>
+        </div>
+
+        <hr class="border-zinc-800 control-block">
+
+        <div class="control-block space-y-3">
+          <span class="text-xs font-semibold text-gray-200 block">Display & Highlight Options</span>
+
+          <label class="flex items-center justify-between cursor-pointer group">
+            <span class="text-xs text-gray-300 group-hover:text-white transition">Invert Output Colors</span>
+            <input type="checkbox" id="invertToggle" class="w-4 h-4 rounded accent-blue-600 bg-zinc-800 border-zinc-700 cursor-pointer">
+          </label>
+
+          <label class="flex items-center justify-between cursor-pointer group">
+            <span class="text-xs text-gray-300 group-hover:text-white transition">Split View (Before / After)</span>
+            <input type="checkbox" id="splitViewToggle" class="w-4 h-4 rounded accent-blue-600 bg-zinc-800 border-zinc-700 cursor-pointer">
+          </label>
+
+          <div class="space-y-2 pt-1">
+            <label class="flex items-center justify-between cursor-pointer group">
+              <span class="text-xs text-gray-300 group-hover:text-white transition flex items-center gap-1.5">
+                <span class="w-2.5 h-2.5 rounded-full bg-red-500 inline-block"></span> Highlight Thresholded Black
+              </span>
+              <input type="checkbox" id="highlightBlackToggle" class="w-4 h-4 rounded accent-red-600 bg-zinc-800 border-zinc-700 cursor-pointer">
+            </label>
+
+            <label class="flex items-center justify-between cursor-pointer group">
+              <span class="text-xs text-gray-300 group-hover:text-white transition flex items-center gap-1.5">
+                <span class="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block"></span> Highlight Thresholded White
+              </span>
+              <input type="checkbox" id="highlightWhiteToggle" class="w-4 h-4 rounded accent-blue-500 bg-zinc-800 border-zinc-700 cursor-pointer">
+            </label>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="panel-footer p-3 bg-zinc-900 border-t border-zinc-800 text-[11px] font-mono text-zinc-400 space-y-1">
+        <div class="flex justify-between">
+          <span>Dimensions:</span>
+          <span id="statDimensions" class="text-gray-200">0 x 0 px</span>
+        </div>
+        <div class="flex justify-between">
+          <span>White Ratio:</span>
+          <span id="statWhiteRatio" class="text-gray-200">0%</span>
+        </div>
+        <div class="flex justify-between">
+          <span>Black Ratio:</span>
+          <span id="statBlackRatio" class="text-gray-200">0%</span>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <script>
+    const MAX_FILE_SIZE = 50 * 1024 * 1024;
+    const MAX_PIXELS = 12_000_000; // ~12 MP — safer for mid-range devices
+    const MAX_DIMENSION = 6000;
+
+    const state = {
+      image: null,
+      originalImageData: null,
+      blurredImageData: null,
+      luminanceData: null,
+      offscreenCanvas: null,
+      offscreenCtx: null,
+      processFrame: 0,
+      loadToken: 0,
+      dragCounter: 0,
+      histogramData: new Array(256).fill(0),
+      threshold: 128,
+      algorithm: 'rec601',
+      preBlur: 0,
+      invert: false,
+      splitView: false,
+      splitPosition: 0.5,
+      highlightBlack: false,
+      highlightWhite: false,
+      zoom: 1,
+      panX: 0,
+      panY: 0,
+      isPanning: false,
+      isSplitting: false,
+      activePointers: new Map(),
+      pinchStartDistance: 0,
+      pinchStartZoom: 1,
+      startPanX: 0,
+      startPanY: 0,
+      sliderFocusTimer: 0
+    };
+
+    const viewport = document.getElementById('viewportContainer');
+    const transformTarget = document.getElementById('canvasTransformTarget');
+    const origCanvas = document.getElementById('originalCanvas');
+    const threshCanvas = document.getElementById('thresholdCanvas');
+    const origCtx = origCanvas.getContext('2d', { willReadFrequently: true });
+    const threshCtx = threshCanvas.getContext('2d', { willReadFrequently: true });
+
+    const histCanvas = document.getElementById('histogramCanvas');
+    const histCtx = histCanvas.getContext('2d');
+    const histMarker = document.getElementById('histogramMarker');
+    const histTooltip = document.getElementById('histTooltip');
+
+    const thresholdRange = document.getElementById('thresholdRange');
+    const thresholdNumber = document.getElementById('thresholdNumber');
+    const algoSelect = document.getElementById('algoSelect');
+    const blurRange = document.getElementById('blurRange');
+    const blurVal = document.getElementById('blurVal');
+    const invertToggle = document.getElementById('invertToggle');
+    const splitViewToggle = document.getElementById('splitViewToggle');
+    const splitDivider = document.getElementById('splitDivider');
+    const highlightBlackToggle = document.getElementById('highlightBlackToggle');
+    const highlightWhiteToggle = document.getElementById('highlightWhiteToggle');
+
+    const zoomPercent = document.getElementById('zoomPercent');
+    const loader = document.getElementById('loader');
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const moreMenuBtn = document.getElementById('moreMenuBtn');
+    const moreMenu = document.getElementById('moreMenu');
+    const presetMenu = document.getElementById('presetMenu');
+
+    window.addEventListener('DOMContentLoaded', () => {
+      setupEventListeners();
+      loadSamplePreset('portrait');
+    });
+
+    function setupEventListeners() {
+      thresholdRange.addEventListener('input', (e) => {
+        updateThreshold(parseInt(e.target.value, 10));
+      });
+      thresholdNumber.addEventListener('change', (e) => {
+        let val = parseInt(e.target.value, 10);
+        val = Math.max(0, Math.min(255, Number.isFinite(val) ? val : state.threshold));
+        updateThreshold(val);
+      });
+
+      algoSelect.addEventListener('change', (e) => {
+        state.algorithm = e.target.value;
+        calculateHistogram();
+        processImage();
+      });
+
+      blurRange.addEventListener('input', (e) => {
+        state.preBlur = parseFloat(e.target.value);
+        blurVal.textContent = `${state.preBlur} px`;
+        applyBlurAndProcess();
+      });
+
+      invertToggle.addEventListener('change', (e) => {
+        state.invert = e.target.checked;
+        processImage();
+      });
+      splitViewToggle.addEventListener('change', (e) => {
+        state.splitView = e.target.checked;
+        updateSplitViewLayout();
+      });
+      highlightBlackToggle.addEventListener('change', (e) => {
+        state.highlightBlack = e.target.checked;
+        processImage();
+      });
+      highlightWhiteToggle.addEventListener('change', (e) => {
+        state.highlightWhite = e.target.checked;
+        processImage();
+      });
+
+      const resetParams = () => {
+        state.threshold = 128;
+        state.algorithm = 'rec601';
+        state.preBlur = 0;
+        state.invert = false;
+        state.splitView = false;
+        state.highlightBlack = false;
+        state.highlightWhite = false;
+        state.splitPosition = 0.5;
+        if (state.processFrame) {
+          cancelAnimationFrame(state.processFrame);
+          state.processFrame = 0;
+        }
+        thresholdRange.value = 128;
+        thresholdNumber.value = 128;
+        algoSelect.value = 'rec601';
+        blurRange.value = 0;
+        blurVal.textContent = '0 px';
+        invertToggle.checked = false;
+        splitViewToggle.checked = false;
+        highlightBlackToggle.checked = false;
+        highlightWhiteToggle.checked = false;
+        applyBlurAndProcess();
+        updateSplitViewLayout();
+      };
+
+      document.getElementById('resetParamsBtn').addEventListener('click', resetParams);
+      document.getElementById('menuResetParamsBtn').addEventListener('click', () => {
+        closeMenus();
+        resetParams();
+      });
+
+      // 3-dot menu
+      moreMenuBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const open = moreMenu.classList.toggle('hidden') === false;
+        moreMenuBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        if (open) presetMenu.classList.add('hidden');
+      });
+
+      document.getElementById('menuPresetsBtn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        moreMenu.classList.add('hidden');
+        moreMenuBtn.setAttribute('aria-expanded', 'false');
+        presetMenu.classList.toggle('hidden');
+      });
+      document.getElementById('menuFitBtn').addEventListener('click', () => { closeMenus(); fitToScreen(); });
+      document.getElementById('menuActualBtn').addEventListener('click', () => { closeMenus(); setZoom(1); });
+      document.getElementById('menuResetViewBtn').addEventListener('click', () => {
+        closeMenus();
+        state.panX = 0;
+        state.panY = 0;
+        fitToScreen();
+      });
+      document.getElementById('menuAboutBtn').addEventListener('click', () => {
+        closeMenus();
+        alert(
+          'Photoshop Threshold Studio v2.1\n\n' +
+          'Browser-based threshold editor.\n' +
+          '• Open or drop an image\n' +
+          '• Adjust threshold, algorithm, and pre-blur\n' +
+          '• Split view, histogram, export PNG\n\n' +
+          'Shortcuts: + / − zoom · 0 fit · 1 actual size\n' +
+          'Processing runs fully in your browser.'
+        );
+      });
+
+      document.addEventListener('click', () => closeMenus());
+      moreMenu.addEventListener('click', (e) => e.stopPropagation());
+      presetMenu.addEventListener('click', (e) => e.stopPropagation());
+
+      document.querySelectorAll('.preset-option').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const type = e.currentTarget.dataset.type;
+          closeMenus();
+          loadSamplePreset(type);
+        });
+      });
+
+      // Slider focus mode
+      setupSliderFocus(thresholdRange, 'threshold');
+      setupSliderFocus(blurRange, 'blur');
+
+      fileInput.addEventListener('change', (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (file) loadImageFromFile(file);
+        e.target.value = '';
+      });
+
+      window.addEventListener('dragenter', (e) => {
+        e.preventDefault();
+        state.dragCounter++;
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+        dropZone.classList.remove('hidden');
+      });
+      window.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+        dropZone.classList.remove('hidden');
+      });
+      window.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        state.dragCounter = Math.max(0, state.dragCounter - 1);
+        if (state.dragCounter === 0) dropZone.classList.add('hidden');
+      });
+      window.addEventListener('drop', (e) => {
+        e.preventDefault();
+        state.dragCounter = 0;
+        dropZone.classList.add('hidden');
+        const files = e.dataTransfer && e.dataTransfer.files;
+        if (files && files.length) loadImageFromFile(files[0]);
+      });
+
+      viewport.addEventListener('wheel', handleWheelZoom, { passive: false });
+      viewport.addEventListener('pointerdown', handlePointerDown);
+      window.addEventListener('pointermove', handlePointerMove);
+      window.addEventListener('pointerup', handlePointerUp);
+      window.addEventListener('pointercancel', handlePointerUp);
+
+      document.getElementById('zoomInBtn').addEventListener('click', () => setZoom(state.zoom * 1.25));
+      document.getElementById('zoomOutBtn').addEventListener('click', () => setZoom(state.zoom / 1.25));
+      document.getElementById('fitScreenBtn').addEventListener('click', fitToScreen);
+      document.getElementById('resetZoomBtn').addEventListener('click', () => setZoom(1));
+
+      histCanvas.addEventListener('click', (e) => {
+        const rect = histCanvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const level = Math.round((x / rect.width) * 255);
+        updateThreshold(Math.max(0, Math.min(255, level)));
+      });
+      histCanvas.addEventListener('mousemove', (e) => {
+        const rect = histCanvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const level = Math.max(0, Math.min(255, Math.round((x / rect.width) * 255)));
+        const count = state.histogramData[level] || 0;
+        document.getElementById('histHoverL').textContent = level;
+        document.getElementById('histHoverC').textContent = count.toLocaleString();
+        histTooltip.classList.remove('hidden');
+      });
+      histCanvas.addEventListener('mouseleave', () => histTooltip.classList.add('hidden'));
+
+      document.getElementById('exportBtn').addEventListener('click', exportPNG);
+
+      window.addEventListener('keydown', (e) => {
+        if (e.target.matches('input, textarea, select, [contenteditable="true"]')) return;
+        if (e.key === '+' || e.key === '=') setZoom(state.zoom * 1.25);
+        else if (e.key === '-') setZoom(state.zoom / 1.25);
+        else if (e.key === '0') fitToScreen();
+        else if (e.key === '1') setZoom(1);
+        else if (e.key === 'Escape') closeMenus();
+      });
+    }
+
+    function closeMenus() {
+      moreMenu.classList.add('hidden');
+      presetMenu.classList.add('hidden');
+      moreMenuBtn.setAttribute('aria-expanded', 'false');
+    }
+
+    function setupSliderFocus(rangeEl, groupName) {
+      const block = document.querySelector(`[data-slider-group="${groupName}"]`);
+      const enter = () => {
+        if (state.sliderFocusTimer) {
+          clearTimeout(state.sliderFocusTimer);
+          state.sliderFocusTimer = 0;
+        }
+        document.querySelectorAll('.control-block.slider-active').forEach(el => el.classList.remove('slider-active'));
+        if (block) block.classList.add('slider-active');
+        document.body.classList.add('slider-focus');
+      };
+      const leave = () => {
+        if (state.sliderFocusTimer) clearTimeout(state.sliderFocusTimer);
+        state.sliderFocusTimer = setTimeout(() => {
+          document.body.classList.remove('slider-focus');
+          document.querySelectorAll('.control-block.slider-active').forEach(el => el.classList.remove('slider-active'));
+          state.sliderFocusTimer = 0;
+        }, 280);
+      };
+      rangeEl.addEventListener('pointerdown', enter);
+      rangeEl.addEventListener('touchstart', enter, { passive: true });
+      rangeEl.addEventListener('pointerup', leave);
+      rangeEl.addEventListener('pointercancel', leave);
+      rangeEl.addEventListener('change', leave);
+      // Keep focus while dragging even if pointer leaves the thumb briefly
+      rangeEl.addEventListener('input', enter);
+    }
+
+    function updateThreshold(val) {
+      state.threshold = val;
+      thresholdRange.value = val;
+      thresholdNumber.value = val;
+      const percentage = (val / 255) * 100;
+      histMarker.style.left = `${percentage}%`;
+      processImage();
+    }
+
+    function loadImageFromFile(file) {
+      if (!file || !file.type || !file.type.startsWith('image/')) {
+        alert('Please choose a valid image file.');
+        return;
+      }
+      if (file.size > MAX_FILE_SIZE) {
+        alert('This image is larger than 50 MB. Please choose a smaller image.');
+        return;
+      }
+
+      const token = ++state.loadToken;
+      showLoader(true);
+      const reader = new FileReader();
+
+      reader.onerror = () => {
+        if (token !== state.loadToken) return;
+        showLoader(false);
+        alert('Could not read this file. It may be damaged or inaccessible.');
+      };
+
+      reader.onload = () => {
+        if (token !== state.loadToken) return;
+        const img = new Image();
+        img.onload = () => {
+          if (token !== state.loadToken) return;
+          try {
+            initLoadedImage(img);
+          } catch (error) {
+            console.error('Image initialization failed:', error);
+            showLoader(false);
+            alert('This image could not be processed. Try a smaller or different image.');
+          }
+        };
+        img.onerror = () => {
+          if (token !== state.loadToken) return;
+          showLoader(false);
+          alert('The selected file is not a supported or valid image.');
+        };
+        img.src = reader.result;
+      };
+
+      reader.readAsDataURL(file);
+    }
+
+    function loadSamplePreset(presetType) {
+      showLoader(true);
+      const sampleUrls = {
+        portrait: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=1200&q=80',
+        architecture: 'https://images.unsplash.com/photo-1513694203232-719a280e022f?auto=format&fit=crop&w=1200&q=80',
+        text: 'https://images.unsplash.com/photo-1516962215378-7fa2e137ae93?auto=format&fit=crop&w=1200&q=80',
+        landscape: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1200&q=80'
+      };
+
+      const img = new Image();
+      img.crossOrigin = 'Anonymous';
+      img.onload = () => initLoadedImage(img);
+      img.onerror = () => {
+        showLoader(false);
+        alert('Failed to load sample image. Check your network or open a local image.');
+      };
+      img.src = sampleUrls[presetType] || sampleUrls.portrait;
+    }
+
+    function computeSafeSize(width, height) {
+      let w = width;
+      let h = height;
+      const pixels = w * h;
+      let scale = 1;
+
+      if (w > MAX_DIMENSION || h > MAX_DIMENSION) {
+        scale = Math.min(MAX_DIMENSION / w, MAX_DIMENSION / h);
+      }
+      if (pixels * scale * scale > MAX_PIXELS) {
+        scale = Math.min(scale, Math.sqrt(MAX_PIXELS / pixels));
+      }
+
+      if (scale < 1) {
+        w = Math.max(1, Math.round(w * scale));
+        h = Math.max(1, Math.round(h * scale));
+        return { width: w, height: h, scaled: true, scale };
+      }
+      return { width: w, height: h, scaled: false, scale: 1 };
+    }
+
+    function initLoadedImage(img) {
+      const safe = computeSafeSize(img.width, img.height);
+      if (safe.scaled) {
+        // Draw into a temporary canvas at reduced size for processing.
+        const temp = document.createElement('canvas');
+        temp.width = safe.width;
+        temp.height = safe.height;
+        const tctx = temp.getContext('2d');
+        tctx.drawImage(img, 0, 0, safe.width, safe.height);
+        const scaled = new Image();
+        scaled.onload = () => finishInit(scaled, true, img.width, img.height);
+        scaled.src = temp.toDataURL('image/png');
+        return;
+      }
+      finishInit(img, false, img.width, img.height);
+    }
+
+    function finishInit(img, wasScaled, originalW, originalH) {
+      state.image = img;
+
+      origCanvas.width = img.width;
+      origCanvas.height = img.height;
+      threshCanvas.width = img.width;
+      threshCanvas.height = img.height;
+
+      origCtx.drawImage(img, 0, 0);
+      state.originalImageData = origCtx.getImageData(0, 0, img.width, img.height);
+      state.offscreenCanvas = state.offscreenCanvas || document.createElement('canvas');
+      state.offscreenCtx = state.offscreenCanvas.getContext('2d', { willReadFrequently: true });
+
+      const dimLabel = wasScaled
+        ? `${img.width} × ${img.height} px (from ${originalW} × ${originalH})`
+        : `${img.width} × ${img.height} px`;
+      document.getElementById('statDimensions').textContent = dimLabel;
+
+      applyBlurAndProcess();
+      fitToScreen();
+      showLoader(false);
+
+      if (wasScaled) {
+        // Soft notice — non-blocking
+        console.info(`Image downscaled from ${originalW}×${originalH} to ${img.width}×${img.height} for performance.`);
+      }
+    }
+
+    function applyBlurAndProcess() {
+      if (!state.originalImageData || !state.image) return;
+
+      const width = origCanvas.width;
+      const height = origCanvas.height;
+
+      if (state.preBlur > 0) {
+        if (!state.offscreenCanvas) {
+          state.offscreenCanvas = document.createElement('canvas');
+          state.offscreenCtx = state.offscreenCanvas.getContext('2d', { willReadFrequently: true });
+        }
+        state.offscreenCanvas.width = width;
+        state.offscreenCanvas.height = height;
+        state.offscreenCtx.clearRect(0, 0, width, height);
+        state.offscreenCtx.filter = `blur(${state.preBlur}px)`;
+        state.offscreenCtx.drawImage(state.image, 0, 0, width, height);
+        state.offscreenCtx.filter = 'none';
+        state.blurredImageData = state.offscreenCtx.getImageData(0, 0, width, height);
+      } else {
+        state.blurredImageData = state.originalImageData;
+      }
+
+      cacheLuminance();
+      calculateHistogram();
+      processImage();
+    }
+
+    function cacheLuminance() {
+      if (!state.blurredImageData) return;
+      const data = state.blurredImageData.data;
+      const pixelCount = data.length / 4;
+      const values = new Uint8Array(pixelCount);
+
+      for (let p = 0, i = 0; i < data.length; p++, i += 4) {
+        values[p] = Math.round(getPixelLuminance(data[i], data[i + 1], data[i + 2]));
+      }
+      state.luminanceData = values;
+    }
+
+    function getPixelLuminance(r, g, b) {
+      switch (state.algorithm) {
+        case 'rec709':
+          return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        case 'average':
+          return (r + g + b) / 3;
+        case 'redChannel':
+          return r;
+        case 'greenChannel':
+          return g;
+        case 'blueChannel':
+          return b;
+        case 'rec601':
+        default:
+          return 0.299 * r + 0.587 * g + 0.114 * b;
+      }
+    }
+
+    function calculateHistogram() {
+      if (!state.blurredImageData || !state.luminanceData) return;
+      const data = state.blurredImageData.data;
+      state.histogramData.fill(0);
+      for (let p = 0, i = 0; i < data.length; p++, i += 4) {
+        if (data[i + 3] === 0) continue;
+        state.histogramData[state.luminanceData[p]]++;
+      }
+      renderHistogram();
+    }
+
+    function renderHistogram() {
+      const width = histCanvas.width;
+      const height = histCanvas.height;
+      histCtx.clearRect(0, 0, width, height);
+      const maxCount = Math.max(...state.histogramData);
+      if (maxCount === 0) return;
+
+      histCtx.fillStyle = '#666666';
+      for (let i = 0; i < 256; i++) {
+        const count = state.histogramData[i];
+        if (count > 0) {
+          const normalizedHeight = Math.log(count + 1) / Math.log(maxCount + 1);
+          const barHeight = Math.max(1, Math.round(normalizedHeight * height));
+          histCtx.fillRect(i, height - barHeight, 1, barHeight);
+        }
+      }
+
+      const gradient = histCtx.createLinearGradient(0, height - 2, width, height - 2);
+      gradient.addColorStop(0, '#000000');
+      gradient.addColorStop(1, '#ffffff');
+      histCtx.fillStyle = gradient;
+      histCtx.fillRect(0, height - 3, width, 3);
+    }
+
+    function processImage() {
+      if (!state.blurredImageData || !state.luminanceData) return;
+      if (state.processFrame) cancelAnimationFrame(state.processFrame);
+      state.processFrame = requestAnimationFrame(renderProcessedImage);
+    }
+
+    function renderProcessedImage() {
+      state.processFrame = 0;
+      if (!state.blurredImageData || !state.luminanceData) return;
+
+      const srcData = state.blurredImageData.data;
+      const width = threshCanvas.width;
+      const height = threshCanvas.height;
+      const outputImageData = threshCtx.createImageData(width, height);
+      const outData = outputImageData.data;
+      const luminance = state.luminanceData;
+
+      const threshold = Math.max(0, Math.min(255, Number(state.threshold) || 0));
+      const invert = state.invert;
+      const highlightBlack = state.highlightBlack;
+      const highlightWhite = state.highlightWhite;
+
+      let whitePixelCount = 0;
+      let blackPixelCount = 0;
+      let visiblePixelCount = 0;
+
+      for (let p = 0, i = 0; i < srcData.length; p++, i += 4) {
+        const alpha = srcData[i + 3];
+        const lum = luminance[p];
+
+        if (alpha === 0) {
+          outData[i] = outData[i + 1] = outData[i + 2] = 0;
+          outData[i + 3] = 0;
+          continue;
+        }
+
+        let isWhite = lum >= threshold;
+        if (invert) isWhite = !isWhite;
+
+        visiblePixelCount++;
+        if (isWhite) {
+          whitePixelCount++;
+          if (highlightWhite) {
+            outData[i] = 59;
+            outData[i + 1] = 130;
+            outData[i + 2] = 246;
+          } else {
+            outData[i] = outData[i + 1] = outData[i + 2] = 255;
+          }
+        } else {
+          blackPixelCount++;
+          if (highlightBlack) {
+            outData[i] = 239;
+            outData[i + 1] = 68;
+            outData[i + 2] = 68;
+          } else {
+            outData[i] = outData[i + 1] = outData[i + 2] = 0;
+          }
+        }
+        outData[i + 3] = alpha;
+      }
+
+      threshCtx.putImageData(outputImageData, 0, 0);
+
+      const whitePct = visiblePixelCount ? ((whitePixelCount / visiblePixelCount) * 100).toFixed(1) : '0.0';
+      const blackPct = visiblePixelCount ? ((blackPixelCount / visiblePixelCount) * 100).toFixed(1) : '0.0';
+      document.getElementById('statWhiteRatio').textContent = `${whitePct}%`;
+      document.getElementById('statBlackRatio').textContent = `${blackPct}%`;
+
+      updateSplitViewLayout();
+    }
+
+    function updateSplitViewLayout() {
+      if (!threshCanvas.width) return;
+
+      if (state.splitView) {
+        origCanvas.classList.remove('hidden');
+        splitDivider.classList.remove('hidden');
+        const splitX = threshCanvas.width * state.splitPosition;
+        threshCanvas.style.clipPath = `polygon(${splitX}px 0, 100% 0, 100% 100%, ${splitX}px 100%)`;
+        splitDivider.style.left = `${state.splitPosition * 100}%`;
+      } else {
+        origCanvas.classList.add('hidden');
+        splitDivider.classList.add('hidden');
+        threshCanvas.style.clipPath = 'none';
+      }
+    }
+
+    function setZoom(newZoom, anchorClientX, anchorClientY) {
+      const prev = state.zoom;
+      const next = Math.max(0.1, Math.min(10, newZoom));
+      if (next === prev) {
+        zoomPercent.textContent = `${Math.round(state.zoom * 100)}%`;
+        return;
+      }
+
+      if (typeof anchorClientX === 'number' && typeof anchorClientY === 'number') {
+        const rect = viewport.getBoundingClientRect();
+        const cx = anchorClientX - rect.left - rect.width / 2;
+        const cy = anchorClientY - rect.top - rect.height / 2;
+        // Keep the point under the cursor stable while zooming
+        state.panX = cx - ((cx - state.panX) * (next / prev));
+        state.panY = cy - ((cy - state.panY) * (next / prev));
+      }
+
+      state.zoom = next;
+      zoomPercent.textContent = `${Math.round(state.zoom * 100)}%`;
+      applyTransform();
+    }
+
+    function fitToScreen() {
+      if (!state.image) return;
+      const viewportRect = viewport.getBoundingClientRect();
+      const padding = 40;
+      const scaleX = (viewportRect.width - padding) / origCanvas.width;
+      const scaleY = (viewportRect.height - padding) / origCanvas.height;
+      state.zoom = Math.min(scaleX, scaleY, 1);
+      state.panX = 0;
+      state.panY = 0;
+      zoomPercent.textContent = `${Math.round(state.zoom * 100)}%`;
+      applyTransform();
+    }
+
+    function applyTransform() {
+      transformTarget.style.transform = `translate(${state.panX}px, ${state.panY}px) scale(${state.zoom})`;
+    }
+
+    function handleWheelZoom(e) {
+      e.preventDefault();
+      const zoomFactor = e.deltaY < 0 ? 1.15 : 0.85;
+      setZoom(state.zoom * zoomFactor, e.clientX, e.clientY);
+    }
+
+    function getPointerDistance(a, b) {
+      return Math.hypot(a.x - b.x, a.y - b.y);
+    }
+
+    function handlePointerDown(e) {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      state.activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (viewport.setPointerCapture) {
+        try { viewport.setPointerCapture(e.pointerId); } catch (_) {}
+      }
+
+      if (e.target.closest('#splitDivider') && state.activePointers.size === 1) {
+        state.isSplitting = true;
+        state.isPanning = false;
+        return;
+      }
+
+      if (state.activePointers.size === 2) {
+        const points = [...state.activePointers.values()];
+        state.pinchStartDistance = getPointerDistance(points[0], points[1]);
+        state.pinchStartZoom = state.zoom;
+        state.isPanning = false;
+        state.isSplitting = false;
+      } else if (state.activePointers.size === 1) {
+        state.isPanning = true;
+        state.startPanX = e.clientX - state.panX;
+        state.startPanY = e.clientY - state.panY;
+      }
+    }
+
+    function handlePointerMove(e) {
+      if (!state.activePointers.has(e.pointerId)) return;
+      state.activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+      if (state.activePointers.size >= 2) {
+        const points = [...state.activePointers.values()];
+        const distance = getPointerDistance(points[0], points[1]);
+        if (state.pinchStartDistance > 0) {
+          setZoom(state.pinchStartZoom * (distance / state.pinchStartDistance));
+        }
+        return;
+      }
+
+      if (state.isSplitting) {
+        const rect = threshCanvas.getBoundingClientRect();
+        if (!rect.width) return;
+        let posX = e.clientX - rect.left;
+        posX = Math.max(0, Math.min(rect.width, posX));
+        state.splitPosition = posX / rect.width;
+        updateSplitViewLayout();
+        return;
+      }
+
+      if (state.isPanning) {
+        state.panX = e.clientX - state.startPanX;
+        state.panY = e.clientY - state.startPanY;
+        applyTransform();
+      }
+    }
+
+    function handlePointerUp(e) {
+      state.activePointers.delete(e.pointerId);
+      state.isSplitting = false;
+      state.pinchStartDistance = 0;
+      if (state.activePointers.size === 1) {
+        const remaining = [...state.activePointers.values()][0];
+        state.isPanning = true;
+        state.startPanX = remaining.x - state.panX;
+        state.startPanY = remaining.y - state.panY;
+      } else {
+        state.isPanning = false;
+      }
+    }
+
+    function exportPNG() {
+      if (!threshCanvas.width || !threshCanvas.height) {
+        alert('Open an image before exporting.');
+        return;
+      }
+      try {
+        threshCanvas.toBlob((blob) => {
+          if (!blob) {
+            alert('PNG export failed. The image may be too large for this browser.');
+            return;
+          }
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.download = `threshold-level-${state.threshold}.png`;
+          link.href = url;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+        }, 'image/png');
+      } catch (error) {
+        console.error('PNG export failed:', error);
+        alert('PNG export failed. Try a smaller image.');
+      }
+    }
+
+    function showLoader(visible) {
+      if (visible) loader.classList.remove('hidden');
+      else loader.classList.add('hidden');
+    }
+  </script>
+</body>
+</html>
